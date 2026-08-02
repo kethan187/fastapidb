@@ -3,11 +3,12 @@ from sqlalchemy.orm import Session
 import crud, schemas
 from database import Base, engine, SessionLocal
 import models
-
+from fastapi import Response
+from auth import verify_admin,get_current_user
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
-
+print("MAIN FILE LOADED")
 def get_db():
     db = SessionLocal()
     try:
@@ -16,17 +17,22 @@ def get_db():
         db.close()
 
 
-
-
-
-
 @app.post("/criminals", response_model=schemas.criminalresponse)
 def create(criminal: schemas.criminalcreate, db: Session = Depends(get_db)):
     return crud.create_criminal(db, criminal)
 
-@app.get("/criminals", response_model=list[schemas.criminalresponse])
-def read_all(db: Session = Depends(get_db)):
-    return crud.get_criminals(db)
+# @app.get("/criminals", response_model=list[schemas.criminalresponse])
+# def read_all(db: Session = Depends(get_db)):
+#     return crud.get_criminals(db)
+
+
+@app.post("/criminals/login")
+def user_login(response:Response,user:schemas.UserLogin,db:Session=Depends(get_db)):
+    return crud.login_user(user,db,response)
+
+@app.post("/criminals/register", response_model=schemas.criminalresponse)
+def user_reg(user: schemas.criminalcreate, db: Session = Depends(get_db)):
+    return crud.create_criminal(db, user)
 
 @app.get("/criminals/{criminal_id}", response_model=schemas.criminalresponse)
 def read_one(criminal_id: int, db: Session = Depends(get_db)):
@@ -57,6 +63,12 @@ def get_crim_alias(alias:str,db:Session=Depends(get_db)):
     return crud.get_crim_alias(db,alias)
 
 
+@app.get("/criminals", response_model=list[schemas.criminalresponse])
+def read_all(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(verify_admin)
+):
+    return crud.get_criminals(db)
 
 
 
@@ -220,3 +232,53 @@ def delete(singer_id: int, db: Session = Depends(get_db)):
 @app.get("/topsong/{topsong}")
 def get_singer_by_topsong(topsong:str,db:Session=Depends(get_db)):
     return crud.get_singer_by_topsong(db,topsong)
+
+
+# @app.post("/criminals/register", response_model=schemas.criminalresponse)
+# def user_reg(user: schemas.criminalcreate, db: Session = Depends(get_db)):
+#     return crud.create_criminal(db, user)
+
+
+@app.post("/users/register", response_model=schemas.UserResponse)
+def user_reg(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    return crud.create_user(user, db)
+
+@app.post("/users/login")
+def user_login(
+    response: Response,
+    user: schemas.UserLogin,
+    db: Session = Depends(get_db)
+):
+    return crud.login_user(user, db, response)
+
+@app.get("/users/me", response_model=schemas.UserResponse)
+def my_profile(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    user = crud.get_user_by_id(db, current_user["id"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+@app.get("/users/{user_id}", response_model=schemas.UserResponse)
+def get_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    if not current_user["is_admin"] and current_user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    user = db.query(models.Users).filter(models.Users.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return user
+
+@app.get("/users", response_model=list[schemas.UserResponse])
+def get_all_users(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(verify_admin)
+):
+    return crud.get_all_users(db)

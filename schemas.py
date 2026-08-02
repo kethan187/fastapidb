@@ -4,6 +4,7 @@ class criminalcreate (BaseModel):
     gender:str
     location:str
     alias:str
+    password:str
 
 class criminalresponse (criminalcreate):
     id:int
@@ -16,6 +17,7 @@ class cricketercreate (BaseModel):
     category:str
     iplteam:str
     alias:str
+    
 
 class cricketerresponse (cricketercreate):
     id:int
@@ -29,6 +31,7 @@ class footballercreate (BaseModel):
     category:str
     teamname:str
     alias:str
+    
 
 class footballerresponse (footballercreate):
     id:int
@@ -42,6 +45,7 @@ class animalcreate (BaseModel):
     category:str
     height:int
     weight:int
+  
 
 class animalresponse (animalcreate):
     id:int
@@ -56,9 +60,28 @@ class singercreate (BaseModel):
     awards:str
     location:str
 
+
 class singerresponse (singercreate):
     id:int
 
     model_config = {
         "from_attributes":True
     }
+
+class UserCreate(BaseModel):
+    name:str
+    alias:str
+    password:str
+
+
+class UserResponse(UserCreate):
+    id: int
+
+    model_config = {
+        "from_attributes": True
+    }
+
+
+class UserLogin(BaseModel):
+    alias:str
+    password:str

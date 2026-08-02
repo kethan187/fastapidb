@@ -1,9 +1,20 @@
 from sqlalchemy.orm import Session
 import models
 import schemas
+import bcrypt
+from fastapi import Response,HTTPException,Request,Depends
+from datetime import datetime, timedelta
+import jwt
+
+
+
+SECRET_KEY = "abcdefghijklmnopqrstuvwxyz"
+ALGORITHM = "HS256"
 
 def create_criminal(db: Session, criminal: schemas.criminalcreate):
     db_criminal = models.criminals(**criminal.model_dump())
+    hashed = bcrypt.hashpw(db_criminal.password.encode(), bcrypt.gensalt(rounds=13)).decode("utf-8")
+    db_criminal.password = hashed
     db.add(db_criminal)
     db.commit()
     db.refresh(db_criminal)
@@ -223,3 +234,90 @@ def get_singer_by_topsong(db:Session,topsong:str):
     return db.query(models.singers).filter(
         models.singers.topsong==topsong
     ).all()
+
+from fastapi import HTTPException
+
+def login_user(user, db, response):
+    db_user = db.query(models.Users).filter(
+        models.Users.alias == user.alias
+    ).first()
+
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="Alias not found")
+
+    valid = bcrypt.checkpw(
+        user.password.encode("utf-8"),
+        db_user.password.encode("utf-8")
+    )
+
+    if not valid:
+        raise HTTPException(status_code=401, detail="Invalid password")
+
+    payload = {
+        "id": db_user.id,
+        "name": db_user.name,
+        "alias": db_user.alias,
+        "is_admin": db_user.is_admin,
+        "is_loggedin": True,
+        "exp": datetime.utcnow() + timedelta(minutes=30)
+    }
+
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True
+    )
+
+    return {
+        "message": "Login successful",
+        "access_token": token
+    }
+def create_user(user: schemas.UserCreate, db: Session):
+    hashed_password = bcrypt.hashpw(
+        user.password.encode("utf-8"),
+        bcrypt.gensalt(rounds=13)
+    ).decode("utf-8")
+
+    db_user = models.Users(
+    name=user.name,
+    alias=user.alias,
+    password=hashed_password,
+    is_admin=True
+)
+
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+
+    return db_user
+
+# from fastapi import Request, HTTPException, Depends
+# import jwt
+
+# SECRET_KEY = "abcdefghijklmnopqrstuvwxyz"
+# ALGORITHM = "HS256"
+
+def get_current_user(request: Request):
+    token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def verify_admin(current_user: dict = Depends(get_current_user)):
+    if current_user.get("is_admin") is not True:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
+
+def get_all_users(db: Session):
+    return db.query(models.Users).all()
